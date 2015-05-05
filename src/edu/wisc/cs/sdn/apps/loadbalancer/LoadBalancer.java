@@ -1,12 +1,13 @@
 package edu.wisc.cs.sdn.apps.loadbalancer;
 
-import java.awt.List;
+import java.util.List;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
+import org.openflow.protocol.OFMatch;
 import org.openflow.protocol.OFMessage;
 import org.openflow.protocol.OFOXMField;
 import org.openflow.protocol.OFOXMFieldType;
@@ -16,7 +17,9 @@ import org.openflow.protocol.OFType;
 import org.openflow.protocol.action.OFAction;
 import org.openflow.protocol.action.OFActionOutput;
 import org.openflow.protocol.action.OFActionSetField;
+import org.openflow.protocol.instruction.OFInstruction;
 import org.openflow.protocol.instruction.OFInstructionApplyActions;
+import org.openflow.protocol.instruction.OFInstructionType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,6 +43,7 @@ import net.floodlightcontroller.devicemanager.internal.DeviceManagerImpl;
 import net.floodlightcontroller.packet.ARP;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.IPv4;
+import net.floodlightcontroller.packet.TCP;
 import net.floodlightcontroller.util.MACAddress;
 
 public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
@@ -135,7 +139,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		log.info(String.format("Switch s%d added", switchId));
 		
 		/*********************************************************************/
-		/* TODO: Install rules to send:                                      */
+		/*  Install rules to send:                                      */
 		/*       (1) packets from new connections to each virtual load       */
 		/*       balancer IP to the controller                               */
 		/*       (2) ARP packets to the controller, and                      */
@@ -153,21 +157,39 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		//When a rule should send a packet to the controller, the rule should include an OFInstructionApplyActions whose 
 		//set of actions consists of a single OFActionOutput with OFPort.OFPP_CONTROLLER as the port number.
 		
-		OFInstructionApplyActions actions = new OFInstructionApplyActions();
+		
+		OFMatch rule = new OFMatch();
+		rule.setDataLayerType(OFMatch.ETH_TYPE_ARP);
+		
+		
+		
+		List<OFAction> actionList = new ArrayList<OFAction>();
+		List<OFInstruction> instructionList = new ArrayList<OFInstruction>();;
+		
+		OFInstructionApplyActions actions = new OFInstructionApplyActions(actionList);
+		
 		
 		OFActionOutput output = new OFActionOutput();
 		output.setPort(OFPort.OFPP_CONTROLLER);
-		//actions.setActions(output);
-		//SwitchCommands.installRule(sw, );
+		actionList.add(output);
 		
+		//OFInstructionApplyActions instruction = new OFInstructionApplyActions(actionList);
+		//instruction.setType(OFInstructionType.WRITE_ACTIONS);
+
+		instructionList.add(actions);
 		
+		SwitchCommands.installRule(sw, table, SwitchCommands.DEFAULT_PRIORITY, rule, instructionList);
+				
 		// (3) all other packets to the next rule table in the switch
 		//  use L3Routing.table from within the LoadBalancer class to specify the next table id for the OFInstructionGotoTable 
-		//action you specify for some of the rules installed by your load balancer application.
+		//  action you specify for some of the rules installed by your load balancer application.
 		byte nextTable = L3Routing.table;
 		
+		OFMatch rule2 = new OFMatch();
 		
-		
+		/**
+		 * TODO: figure out how to send everything else to the next switch and then send it
+		 */
 		
 	}
 	
@@ -218,9 +240,16 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 			IPv4 ipPkt = (IPv4)ethPkt.getPayload();
 			if(ipPkt.getProtocol() == IPv4.PROTOCOL_TCP)
 			{
+				TCP tcp = (TCP)ipPkt.getPayload();
+				if(tcp.getFlags() != TCP_FLAG_SYN)
+				{
+					return Command.CONTINUE;
+				}
 				// select a host and install rules to rewrite addresses
 				
-				
+				/**
+				 * TODO: figure out what host we're sending to
+				 */
 				
 				//The connection-specific rules that modify IP and MAC addresses should 
 				//include an instruction to match the modified packets against the rules
@@ -236,20 +265,20 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 				// rewrite dst ip and mac
 				OFInstructionApplyActions actions = new OFInstructionApplyActions();
 				OFActionSetField f1 = new OFActionSetField();
-				OFOXMField field1 = new OFOXMField(OFOXMFieldType.ETH_DST, "dst mac address");
+				OFOXMField field1 = new OFOXMField(OFOXMFieldType.ETH_DST, ethPkt.getDestinationMAC());
 				f1.setField(field1);
 				
 				OFActionSetField f2 = new OFActionSetField();
-				OFOXMField field2 = new OFOXMField(OFOXMFieldType.IPV4_DST, "dst ip address");
+				OFOXMField field2 = new OFOXMField(OFOXMFieldType.IPV4_DST, ipPkt.getDestinationAddress());
 				f2.setField(field2);
 				
 				// rewriting source ip and mac
 				OFActionSetField f3 = new OFActionSetField();
-				OFOXMField field3 = new OFOXMField(OFOXMFieldType.ETH_SRC, "src mac address");
+				OFOXMField field3 = new OFOXMField(OFOXMFieldType.ETH_SRC, ethPkt.getSourceMAC());
 				f3.setField(field3);
 				
 				OFActionSetField f4 = new OFActionSetField();
-				OFOXMField field4 = new OFOXMField(OFOXMFieldType.IPV4_SRC, "src ip address");
+				OFOXMField field4 = new OFOXMField(OFOXMFieldType.IPV4_SRC, ipPkt.getSourceAddress());
 				f4.setField(field4);
 				
 				ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -257,7 +286,11 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 				actionList.add(f2);
 				actionList.add(f3);
 				actionList.add(f4);
-				actions.setActions(actionList);	
+	
+				/** 
+				 * TODO: actually send the rule
+				 */
+				
 			}
 		}
 		
