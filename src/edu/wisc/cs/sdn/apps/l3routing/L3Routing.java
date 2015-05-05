@@ -62,8 +62,8 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
     	
     	for (Host h : this.getHosts()) {
     		
-    		HashMap<IOFSwitch, Integer> switchToDistance = new HashMap<IOFSwitch, Integer>();
-    		HashMap<IOFSwitch, Integer> switchToPort = new HashMap<IOFSwitch, Integer>();
+    		HashMap<Long, Integer> switchToDistance = new HashMap<Long, Integer>();
+    		HashMap<Long, Integer> switchToPort = new HashMap<Long, Integer>();
 
     		//Part 1 of Wikipedia Bellman Ford Algorithm
     		for (IOFSwitch v : this.getSwitches().values()) {
@@ -71,22 +71,37 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
     			/* If Destination Host is Connected to current switch, set weight to 0 */
     			if (v.getId() == h.getSwitch().getId()) {
     				
-    				switchToDistance.put(v, 0);
+    				switchToDistance.put(v.getId(), 0);
+    				switchToPort.put(v.getId(), h.getPort());
     				
     			/* Otherwise set to to infinity */
     			} else {
     				
-    				switchToDistance.put(v, Integer.MAX_VALUE);
+    				switchToDistance.put(v.getId(), Integer.MAX_VALUE);
     			}
     			
-    			switchToPort.put(v, null);
+    			switchToPort.put(v.getId(), null);
     		}	
     			
-    		//Part 1 of Wikipedia Bellman Ford Algorithm
-    		for (int i = 1; i < (this.getLinks().size() - 1); i++) {
+    		//Part 2 of Wikipedia Bellman Ford Algorithm
+    		for (int i = 1; i < (this.getSwitches().size() - 1); i++) {
+    			
+    			for (Link l : this.getLinks()) {
     				
+    				int distanceSrc = switchToDistance.get(l.getSrc());
+    				int distanceDesc = switchToDistance.get(l.getDst());
+    				
+    				if (distanceSrc + 1 < distanceDesc) {
+    					
+    					switchToDistance.put(l.getDst(), distanceSrc + 1);
+    					switchToPort.put(l.getDst(), l.getDstPort());
+    				}
+    				
+    			}
     				
     		}
+    		
+    		//Add Rules
   
     		
     	}
