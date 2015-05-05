@@ -8,10 +8,14 @@ import java.util.Iterator;
 import java.util.Map;
 
 import org.openflow.protocol.OFMessage;
+import org.openflow.protocol.OFOXMField;
+import org.openflow.protocol.OFOXMFieldType;
 import org.openflow.protocol.OFPacketIn;
 import org.openflow.protocol.OFPort;
 import org.openflow.protocol.OFType;
+import org.openflow.protocol.action.OFAction;
 import org.openflow.protocol.action.OFActionOutput;
+import org.openflow.protocol.action.OFActionSetField;
 import org.openflow.protocol.instruction.OFInstructionApplyActions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,6 +66,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
     // Set of virtual IPs and the load balancer instances they correspond with
     private Map<Integer,LoadBalancerInstance> instances;
 
+    LoadBalancerInstance nextInstance;
     /**
      * Loads dependencies and initializes data structures.
      */
@@ -141,6 +146,8 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		//in match criteria, so the SDN switch will notify the controller of each TCP packet sent to a virtual IP which
 		//did not match a connection-specific rule (described below)
 		
+		
+		
 		// (2) ARP packets to the controller
 		//Notify the controller when a client issues an ARP request for the MAC address associated with a virtual IP
 		//When a rule should send a packet to the controller, the rule should include an OFInstructionApplyActions whose 
@@ -188,7 +195,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		ARP reply = new ARP();
 		
 		/*********************************************************************/
-		/* TODO: Send an ARP reply for ARP requests for virtual IPs; for TCP */
+		/* 															for TCP */
 		/*       SYNs sent to a virtual IP, select a host and install        */
 		/*       connection-specific rules to rewrite IP and MAC addresses;  */
 		/*       ignore all other packets                                    */
@@ -212,6 +219,9 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 			if(ipPkt.getProtocol() == IPv4.PROTOCOL_TCP)
 			{
 				// select a host and install rules to rewrite addresses
+				
+				
+				
 				//The connection-specific rules that modify IP and MAC addresses should 
 				//include an instruction to match the modified packets against the rules
 				//installed by your layer-3 routing application
@@ -222,6 +232,32 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 				//	An OFActionSetField with a field type of OFOXMFieldType.IPV4_DST and the desired IP address as the value
 				//	The actions for rewriting the source IP and MAC addresses of a packet are similar.
 				
+				
+				// rewrite dst ip and mac
+				OFInstructionApplyActions actions = new OFInstructionApplyActions();
+				OFActionSetField f1 = new OFActionSetField();
+				OFOXMField field1 = new OFOXMField(OFOXMFieldType.ETH_DST, "dst mac address");
+				f1.setField(field1);
+				
+				OFActionSetField f2 = new OFActionSetField();
+				OFOXMField field2 = new OFOXMField(OFOXMFieldType.IPV4_DST, "dst ip address");
+				f2.setField(field2);
+				
+				// rewriting source ip and mac
+				OFActionSetField f3 = new OFActionSetField();
+				OFOXMField field3 = new OFOXMField(OFOXMFieldType.ETH_SRC, "src mac address");
+				f3.setField(field3);
+				
+				OFActionSetField f4 = new OFActionSetField();
+				OFOXMField field4 = new OFOXMField(OFOXMFieldType.IPV4_SRC, "src ip address");
+				f4.setField(field4);
+				
+				ArrayList<OFAction> actionList = new ArrayList<OFAction>();
+				actionList.add(f1);
+				actionList.add(f2);
+				actionList.add(f3);
+				actionList.add(f4);
+				actions.setActions(actionList);	
 			}
 		}
 		
