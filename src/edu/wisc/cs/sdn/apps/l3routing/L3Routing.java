@@ -9,8 +9,11 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.openflow.protocol.OFMatch;
+import org.openflow.protocol.action.OFAction;
+import org.openflow.protocol.action.OFActionOutput;
 import org.openflow.protocol.instruction.OFInstruction;
 import org.openflow.protocol.instruction.OFInstructionType;
+import org.python.indexer.ast.NWhile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,6 +57,40 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
     
     // Map of hosts to devices
     private Map<IDevice,Host> knownHosts;
+    
+    private void bellmanFord2() {
+    	
+    	for (Host h : this.getHosts()) {
+    		
+    		HashMap<IOFSwitch, Integer> switchToDistance = new HashMap<IOFSwitch, Integer>();
+    		HashMap<IOFSwitch, Integer> switchToPort = new HashMap<IOFSwitch, Integer>();
+
+    		//Part 1 of Wikipedia Bellman Ford Algorithm
+    		for (IOFSwitch v : this.getSwitches().values()) {
+    			
+    			/* If Destination Host is Connected to current switch, set weight to 0 */
+    			if (v.getId() == h.getSwitch().getId()) {
+    				
+    				switchToDistance.put(v, 0);
+    				
+    			/* Otherwise set to to infinity */
+    			} else {
+    				
+    				switchToDistance.put(v, Integer.MAX_VALUE);
+    			}
+    			
+    			switchToPort.put(v, null);
+    		}	
+    			
+    		//Part 1 of Wikipedia Bellman Ford Algorithm
+    		for (int i = 1; i < (this.getLinks().size() - 1); i++) {
+    				
+    				
+    		}
+  
+    		
+    	}
+    }
     
     /**
      * This method runs for each host.
@@ -123,15 +160,19 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
     			for (Host h : hosts) {
     				
     				IOFSwitch predecessorSwitch = idMap.get(predecessor[i]);
-    				OFMatch matchCriteria = new OFMatch();
-    				OFInstruction instruction = new OFInstruction(); //TODO: This does nothing
     				
-    				ArrayList<OFInstruction> instructions = new ArrayList<OFInstruction>();
-    				instructions.add(instruction);
+    				OFMatch matchCriteria = new OFMatch();
+    				matchCriteria.setDataLayerType(OFMatch.ETH_TYPE_IPV4);
     				matchCriteria.setNetworkDestination(h.getIPv4Address());
     				
+    				ArrayList<OFInstruction> instructions = new ArrayList<OFInstruction>();
+    				ArrayList<OFAction> actions = new ArrayList<OFAction>();
+    				
+    				OFActionOutput action = new OFActionOutput();
+    				
+    				
     				/* TODO: Double Check GetTables() is correct */
-    				SwitchCommands.installRule(predecessorSwitch, predecessorSwitch.getTables(), SwitchCommands.DEFAULT_PRIORITY, matchCriteria, instructions);
+    				//SwitchCommands.installRule(predecessorSwitch, predecessorSwitch.getTables(), SwitchCommands.DEFAULT_PRIORITY, matchCriteria, instructions);
     			}
     			
     		}
@@ -139,7 +180,7 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
     }
     
     /**
-     * Uses the results of the Bellman-Ford algroith to determine the next
+     * Uses the results of the Bellman-Ford algorithm to determine the next
      * switch to add a 
      * @param src
      * @param desc

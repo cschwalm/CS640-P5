@@ -9,12 +9,10 @@ import java.util.Map;
 import org.openflow.protocol.OFMessage;
 import org.openflow.protocol.OFPacketIn;
 import org.openflow.protocol.OFType;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import edu.wisc.cs.sdn.apps.util.ArpServer;
-
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.IFloodlightProviderService;
 import net.floodlightcontroller.core.IOFMessageListener;
@@ -29,6 +27,7 @@ import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.devicemanager.IDevice;
 import net.floodlightcontroller.devicemanager.IDeviceService;
 import net.floodlightcontroller.devicemanager.internal.DeviceManagerImpl;
+import net.floodlightcontroller.packet.ARP;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.util.MACAddress;
 
@@ -131,6 +130,12 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		/*       (3) all other packets to the next rule table in the switch  */
 		
 		/*********************************************************************/
+		//Notify the controller when a client initiates a TCP connection with a virtual IP—we cannot specify TCP flags 
+		//in match criteria, so the SDN switch will notify the controller of each TCP packet sent to a virtual IP which
+		//did not match a connection-specific rule (described below)
+		//Notify the controller when a client issues an ARP request for the MAC address associated with a virtual IP
+		
+		
 	}
 	
 	/**
@@ -154,14 +159,20 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		ethPkt.deserialize(pktIn.getPacketData(), 0,
 				pktIn.getPacketData().length);
 		
+		ARP reply = new ARP();
+		
 		/*********************************************************************/
 		/* TODO: Send an ARP reply for ARP requests for virtual IPs; for TCP */
 		/*       SYNs sent to a virtual IP, select a host and install        */
 		/*       connection-specific rules to rewrite IP and MAC addresses;  */
 		/*       ignore all other packets                                    */
 		
-		/*********************************************************************/
-
+		/*********************************************************************/		
+		
+		if(ethPkt.getEtherType() == Ethernet.TYPE_ARP)
+		{
+			
+		}
 		
 		// We don't care about other packets
 		return Command.CONTINUE;
