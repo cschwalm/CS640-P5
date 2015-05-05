@@ -3,15 +3,19 @@ package edu.wisc.cs.sdn.apps.l3routing;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.openflow.protocol.OFMatch;
+import org.openflow.protocol.instruction.OFInstruction;
+import org.openflow.protocol.instruction.OFInstructionType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import edu.wisc.cs.sdn.apps.util.Host;
-
+import edu.wisc.cs.sdn.apps.util.SwitchCommands;
 import net.floodlightcontroller.core.IFloodlightProviderService;
 import net.floodlightcontroller.core.IOFSwitch;
 import net.floodlightcontroller.core.IOFSwitch.PortChangeType;
@@ -50,7 +54,103 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
     
     // Map of hosts to devices
     private Map<IDevice,Host> knownHosts;
-
+    
+    /**
+     * This method runs for each host.
+     * It should be called on setup, add, and remove.
+     * 
+     */
+    private void bellmanFord() {
+    	
+    	for (IOFSwitch s : this.getSwitches().values()) {
+    		
+    		int[] distance = new int[100];
+    		int[] predecessor = new int[100];
+    		HashMap<Integer, IOFSwitch> idMap = new HashMap<Integer, IOFSwitch>();
+    		
+    		/* Maps path counts to hosts */
+    		//HashMap<Integer, Host> paths = new HashMap<Integer, Host>();
+    		
+    		//Step 1
+    		int vID = 0;
+    		for (IOFSwitch v : this.getSwitches().values()) {
+    			
+    			idMap.put(new Integer(vID), v);
+    			
+    			if (v.getId() == s.getId()) {
+    				distance[vID] = 0;
+    			} else {
+    				distance[vID] = Integer.MAX_VALUE;
+    			}
+    			predecessor[vID] = -1;
+    			vID++;
+    		}
+    		
+    		for(int i = 1; i < this.getSwitches().size() - 1; i++)
+    		{
+    			for(Link l : this.getLinks())
+    			{
+    				if(distance[(int) l.getSrc()] + 1 < distance[(int) l.getDst()]) {
+    					distance[(int) l.getDst()] = distance[(int) l.getSrc()] + 1;
+    					predecessor[(int) l.getDst()] = (int) l.getSrc();
+    				}
+ 
+    			}
+    		}
+    		
+    		// Code here to add rules
+    		// iterate over all the vertices
+    		// Determine the attached host IP addresses
+    		// Add each host IP to each vertice predecessor
+    		for (int i = 0; i < distance.length; i++) {
+    			
+    			if (predecessor[i] == -1) {
+    				continue;
+    				
+    			}
+    			
+    			/* Determine List of Connected Hosts For Index */
+    			ArrayList<Host> hosts = new ArrayList<Host>();
+    			
+    			for (Host h : this.getHosts()) {
+    				
+    				if (h.getSwitch().getId() == idMap.get(i).getId()) {
+    					hosts.add(h);
+    				}
+    			}
+    			
+    			/* For each host, add a rule to predecessor */
+    			for (Host h : hosts) {
+    				
+    				IOFSwitch predecessorSwitch = idMap.get(predecessor[i]);
+    				OFMatch matchCriteria = new OFMatch();
+    				OFInstruction instruction = new OFInstruction(); //TODO: This does nothing
+    				
+    				ArrayList<OFInstruction> instructions = new ArrayList<OFInstruction>();
+    				instructions.add(instruction);
+    				matchCriteria.setNetworkDestination(h.getIPv4Address());
+    				
+    				/* TODO: Double Check GetTables() is correct */
+    				SwitchCommands.installRule(predecessorSwitch, predecessorSwitch.getTables(), SwitchCommands.DEFAULT_PRIORITY, matchCriteria, instructions);
+    			}
+    			
+    		}
+    	}
+    }
+    
+    /**
+     * Uses the results of the Bellman-Ford algroith to determine the next
+     * switch to add a 
+     * @param src
+     * @param desc
+     * @param distance
+     * @param predecessor
+     */
+    private void calculateNextSwitch(int src, int desc, int[] distance, int[] predecessor) {
+    	
+    	
+    }
+    
 	/**
      * Loads dependencies and initializes data structures.
      */
@@ -121,6 +221,7 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
 			log.info(String.format("Host %s added", host.getName()));
 			this.knownHosts.put(device, host);
 			
+			// run bellman-ford to figure out all the shortest paths to a new host
 			/*****************************************************************/
 			/* TODO: Update routing: add rules to route to new host          */
 			
@@ -143,6 +244,7 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
 		log.info(String.format("Host %s is no longer attached to a switch", 
 				host.getName()));
 		
+		// redo bellman-ford here too
 		/*********************************************************************/
 		/* TODO: Update routing: remove rules to route to host               */
 		
@@ -171,6 +273,7 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
 		log.info(String.format("Host %s moved to s%d:%d", host.getName(),
 				host.getSwitch().getId(), host.getPort()));
 		
+		// re run bellman-ford to get new paths
 		/*********************************************************************/
 		/* TODO: Update routing: change rules to route to host               */
 		
