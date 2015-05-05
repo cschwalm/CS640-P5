@@ -6,14 +6,14 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.openflow.protocol.OFMatch;
 import org.openflow.protocol.action.OFAction;
 import org.openflow.protocol.action.OFActionOutput;
 import org.openflow.protocol.instruction.OFInstruction;
-import org.openflow.protocol.instruction.OFInstructionType;
-import org.python.indexer.ast.NWhile;
+import org.openflow.protocol.instruction.OFInstructionApplyActions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,7 +58,14 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
     // Map of hosts to devices
     private Map<IDevice,Host> knownHosts;
     
-    private void bellmanFord2() {
+    /**
+     * This method runs for each host.
+     * It should be called on setup, add, and remove.
+     */
+    private void bellmanFord() {
+    	
+    	/* Reset Table */
+    	table = 0;
     	
     	for (Host h : this.getHosts()) {
     		
@@ -96,115 +103,47 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
     					switchToDistance.put(l.getDst(), distanceSrc + 1);
     					switchToPort.put(l.getDst(), l.getDstPort());
     				}
-    				
-    			}
-    				
-    		}
-    		
-    		//Add Rules
-  
-    		
-    	}
-    }
-    
-    /**
-     * This method runs for each host.
-     * It should be called on setup, add, and remove.
-     * 
-     */
-    private void bellmanFord() {
-    	
-    	for (IOFSwitch s : this.getSwitches().values()) {
-    		
-    		int[] distance = new int[100];
-    		int[] predecessor = new int[100];
-    		HashMap<Integer, IOFSwitch> idMap = new HashMap<Integer, IOFSwitch>();
-    		
-    		/* Maps path counts to hosts */
-    		//HashMap<Integer, Host> paths = new HashMap<Integer, Host>();
-    		
-    		//Step 1
-    		int vID = 0;
-    		for (IOFSwitch v : this.getSwitches().values()) {
-    			
-    			idMap.put(new Integer(vID), v);
-    			
-    			if (v.getId() == s.getId()) {
-    				distance[vID] = 0;
-    			} else {
-    				distance[vID] = Integer.MAX_VALUE;
-    			}
-    			predecessor[vID] = -1;
-    			vID++;
-    		}
-    		
-    		for(int i = 1; i < this.getSwitches().size() - 1; i++)
-    		{
-    			for(Link l : this.getLinks())
-    			{
-    				if(distance[(int) l.getSrc()] + 1 < distance[(int) l.getDst()]) {
-    					distance[(int) l.getDst()] = distance[(int) l.getSrc()] + 1;
-    					predecessor[(int) l.getDst()] = (int) l.getSrc();
-    				}
- 
     			}
     		}
     		
-    		// Code here to add rules
-    		// iterate over all the vertices
-    		// Determine the attached host IP addresses
-    		// Add each host IP to each vertice predecessor
-    		for (int i = 0; i < distance.length; i++) {
+    		/* Add Rule For Each Switch */
+    		for (Entry<Long, Integer> row : switchToPort.entrySet()) {
     			
-    			if (predecessor[i] == -1) {
-    				continue;
-    				
-    			}
+    			int outPort = row.getValue();
     			
-    			/* Determine List of Connected Hosts For Index */
-    			ArrayList<Host> hosts = new ArrayList<Host>();
-    			
-    			for (Host h : this.getHosts()) {
-    				
-    				if (h.getSwitch().getId() == idMap.get(i).getId()) {
-    					hosts.add(h);
+    			/* Find Switch By ID */
+    			IOFSwitch targetSwitch = null;
+    			for (IOFSwitch s : this.getSwitches().values()) {
+    				if (s.getId() == row.getKey()) {
+    					targetSwitch = s;
+    					break;
     				}
     			}
     			
-    			/* For each host, add a rule to predecessor */
-    			for (Host h : hosts) {
-    				
-    				IOFSwitch predecessorSwitch = idMap.get(predecessor[i]);
-    				
-    				OFMatch matchCriteria = new OFMatch();
-    				matchCriteria.setDataLayerType(OFMatch.ETH_TYPE_IPV4);
-    				matchCriteria.setNetworkDestination(h.getIPv4Address());
-    				
-    				ArrayList<OFInstruction> instructions = new ArrayList<OFInstruction>();
-    				ArrayList<OFAction> actions = new ArrayList<OFAction>();
-    				
-    				OFActionOutput action = new OFActionOutput();
-    				
-    				
-    				/* TODO: Double Check GetTables() is correct */
-    				//SwitchCommands.installRule(predecessorSwitch, predecessorSwitch.getTables(), SwitchCommands.DEFAULT_PRIORITY, matchCriteria, instructions);
+    			if (targetSwitch == null) {
+    				System.err.println("Switch Not Found. Exiting...");
+    				System.exit(1);
     			}
     			
-    		}
+    			OFMatch matchCriteria = new OFMatch();
+				matchCriteria.setDataLayerType(OFMatch.ETH_TYPE_IPV4);
+				matchCriteria.setNetworkDestination(h.getIPv4Address());
+				
+				ArrayList<OFInstruction> instructions = new ArrayList<OFInstruction>();
+				ArrayList<OFAction> actions = new ArrayList<OFAction>();
+				
+				OFActionOutput action = new OFActionOutput();
+				action.setPort(outPort);
+				actions.add(action);
+				
+				OFInstructionApplyActions instruction = new OFInstructionApplyActions();
+				instruction.setActions(actions);
+				
+				instructions.add(instruction);
+				
+				SwitchCommands.installRule(targetSwitch, table, SwitchCommands.DEFAULT_PRIORITY, matchCriteria, instructions);			
+    		}	
     	}
-    }
-    
-    /**
-     * Uses the results of the Bellman-Ford algorithm to determine the next
-     * switch to add a 
-     * @param src
-     * @param desc
-     * @param distance
-     * @param predecessor
-     */
-    private void calculateNextSwitch(int src, int desc, int[] distance, int[] predecessor) {
-    	
-    	
     }
     
 	/**
@@ -216,7 +155,7 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
 	{
 		log.info(String.format("Initializing %s...", MODULE_NAME));
 		Map<String,String> config = context.getConfigParams(this);
-        this.table = Byte.parseByte(config.get("table"));
+        table = Byte.parseByte(config.get("table"));
         
 		this.floodlightProv = context.getServiceImpl(
 				IFloodlightProviderService.class);
@@ -238,10 +177,8 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
 		this.linkDiscProv.addListener(this);
 		this.deviceProv.addListener(this);
 		
-		/*********************************************************************/
-		/* TODO: Initialize variables or perform startup tasks, if necessary */
-		
-		/*********************************************************************/
+		/* Clear Table & Setup Paths */
+		this.bellmanFord();
 	}
 	
     /**
@@ -277,11 +214,8 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
 			log.info(String.format("Host %s added", host.getName()));
 			this.knownHosts.put(device, host);
 			
-			// run bellman-ford to figure out all the shortest paths to a new host
-			/*****************************************************************/
-			/* TODO: Update routing: add rules to route to new host          */
-			
-			/*****************************************************************/
+			/* Clear Table & Setup Paths */
+			this.bellmanFord();
 		}
 	}
 
@@ -300,11 +234,8 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
 		log.info(String.format("Host %s is no longer attached to a switch", 
 				host.getName()));
 		
-		// redo bellman-ford here too
-		/*********************************************************************/
-		/* TODO: Update routing: remove rules to route to host               */
-		
-		/*********************************************************************/
+		/* Clear Table & Setup Paths */
+		this.bellmanFord();
 	}
 
 	/**
@@ -329,11 +260,8 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
 		log.info(String.format("Host %s moved to s%d:%d", host.getName(),
 				host.getSwitch().getId(), host.getPort()));
 		
-		// re run bellman-ford to get new paths
-		/*********************************************************************/
-		/* TODO: Update routing: change rules to route to host               */
-		
-		/*********************************************************************/
+		/* Clear Table & Setup Paths */
+		this.bellmanFord();
 	}
 	
     /**
@@ -343,13 +271,11 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
 	@Override		
 	public void switchAdded(long switchId) 
 	{
-		IOFSwitch sw = this.floodlightProv.getSwitch(switchId);
+		//IOFSwitch sw = this.floodlightProv.getSwitch(switchId);
 		log.info(String.format("Switch s%d added", switchId));
 		
-		/*********************************************************************/
-		/* TODO: Update routing: change routing rules for all hosts          */
-		
-		/*********************************************************************/
+		/* Clear Table & Setup Paths */
+		this.bellmanFord();/* Clear Table & Setup Paths */
 	}
 
 	/**
@@ -359,13 +285,11 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
 	@Override
 	public void switchRemoved(long switchId) 
 	{
-		IOFSwitch sw = this.floodlightProv.getSwitch(switchId);
+		//IOFSwitch sw = this.floodlightProv.getSwitch(switchId);
 		log.info(String.format("Switch s%d removed", switchId));
 		
-		/*********************************************************************/
-		/* TODO: Update routing: change routing rules for all hosts          */
-		
-		/*********************************************************************/
+		/* Clear Table & Setup Paths */
+		this.bellmanFord();
 	}
 
 	/**
@@ -393,10 +317,8 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
 			}
 		}
 		
-		/*********************************************************************/
-		/* TODO: Update routing: change routing rules for all hosts          */
-		
-		/*********************************************************************/
+		/* Clear Table & Setup Paths */
+		this.bellmanFord();
 	}
 
 	/**
@@ -457,7 +379,7 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener,
 	 */
 	@Override
 	public String getName() 
-	{ return this.MODULE_NAME; }
+	{ return MODULE_NAME; }
 
 	/**
 	 * Check if events must be passed to another module before this module is
