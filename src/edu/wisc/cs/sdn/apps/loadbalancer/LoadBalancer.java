@@ -106,7 +106,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
         this.deviceProv = context.getServiceImpl(IDeviceService.class);
         
         /*********************************************************************/
-        /* TODO: Initialize other class variables, if necessary              */
+        /* : Initialize other class variables, if necessary              */
         
         /*********************************************************************/
 	}
@@ -123,7 +123,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		this.floodlightProv.addOFMessageListener(OFType.PACKET_IN, this);
 		
 		/*********************************************************************/
-		/* TODO: Perform other tasks, if necessary                           */
+		/* : Perform other tasks, if necessary                           */
 		
 		/*********************************************************************/
 	}
@@ -150,6 +150,19 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		//in match criteria, so the SDN switch will notify the controller of each TCP packet sent to a virtual IP which
 		//did not match a connection-specific rule (described below)
 		
+		OFMatch newConnection = new OFMatch();
+		newConnection.setDataLayerType(OFMatch.IP_PROTO_TCP);
+		List<OFAction> actionList = new ArrayList<OFAction>();
+		List<OFInstruction> instructionList = new ArrayList<OFInstruction>();
+		
+		OFActionOutput output = new OFActionOutput();
+		output.setPort(OFPort.OFPP_CONTROLLER);
+		actionList.add(output);
+		
+		OFInstructionApplyActions ac = new OFInstructionApplyActions(actionList);
+		instructionList.add(ac);
+		SwitchCommands.installRule(sw, table, SwitchCommands.DEFAULT_PRIORITY, newConnection, instructionList);
+		
 		
 		
 		// (2) ARP packets to the controller
@@ -163,13 +176,13 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		
 		
 		
-		List<OFAction> actionList = new ArrayList<OFAction>();
-		List<OFInstruction> instructionList = new ArrayList<OFInstruction>();;
+		actionList = new ArrayList<OFAction>();
+		instructionList = new ArrayList<OFInstruction>();
 		
 		OFInstructionApplyActions actions = new OFInstructionApplyActions(actionList);
 		
 		
-		OFActionOutput output = new OFActionOutput();
+		output = new OFActionOutput();
 		output.setPort(OFPort.OFPP_CONTROLLER);
 		actionList.add(output);
 		
@@ -187,10 +200,22 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		
 		OFMatch rule2 = new OFMatch();
 		
+		
 		/**
 		 * TODO: figure out how to send everything else to the next switch and then send it
 		 */
 		
+		actionList = new ArrayList<OFAction>();
+		instructionList = new ArrayList<OFInstruction>();
+		
+		actions = new OFInstructionApplyActions(actionList);
+		output = new OFActionOutput();
+		output.setPort(OFPort.OFPP_CONTROLLER);
+		actionList.add(output);
+		
+		instructionList.add(actions);
+		
+		SwitchCommands.installRule(sw, table, SwitchCommands.DEFAULT_PRIORITY, rule2, instructionList);
 	}
 	
 	/**
@@ -224,6 +249,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		
 		/*********************************************************************/		
 		
+		//Construct and send an ARP reply packet when a client requests the MAC address associated with a virtual IP
 		if(ethPkt.getEtherType() == Ethernet.TYPE_ARP)
 		{
 			ARP arp = (ARP)ethPkt.getPayload();
@@ -246,10 +272,15 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 					return Command.CONTINUE;
 				}
 				// select a host and install rules to rewrite addresses
+				//For each new TCP connection, the load balancer selects 
+				//one of the specified hosts (usually in round robin order). The
+				//load balancer maintains a mapping of active connections—identified 
+				//by the client’s IP and TCP port—to the assigned hosts.
 				
 				/**
 				 * TODO: figure out what host we're sending to
 				 */
+				//instances.get(0).getNextHostIP();
 				
 				//The connection-specific rules that modify IP and MAC addresses should 
 				//include an instruction to match the modified packets against the rules
