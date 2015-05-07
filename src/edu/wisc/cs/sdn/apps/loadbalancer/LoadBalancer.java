@@ -150,6 +150,8 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		//in match criteria, so the SDN switch will notify the controller of each TCP packet sent to a virtual IP which
 		//did not match a connection-specific rule (described below)
 		
+		//match on load balancer vIP, destined to load balancer ip
+		
 		OFMatch newConnection = new OFMatch();
 		newConnection.setDataLayerType(OFMatch.IP_PROTO_TCP);
 		List<OFAction> actionList = new ArrayList<OFAction>();
